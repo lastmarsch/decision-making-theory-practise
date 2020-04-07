@@ -76,12 +76,15 @@ class Task1_solver:
 
 	def answer(self, seq, funds):
 		sum_profit = 0
+		x = funds
 		for i in range(len(seq)):
+			if i != 0:
+				x = self.transition(x, seq[i])
 			print("Month #", i, "\t", 
 				  seq[i], "\t\t", 
-				  funds - seq[i], "\t\t",
-				  self.profit(funds, seq[i]))
-			sum_profit += self.profit(funds, seq[i])
+				  x - seq[i], "\t\t",
+				  self.profit(x, seq[i]))
+			sum_profit += self.profit(x, seq[i])
 		return(sum_profit)
 
 
