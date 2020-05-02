@@ -2,53 +2,100 @@
 
 import sys
 import numpy
-from cvxopt import matrix
-from cvxopt.modeling import variable, op
+from cvxopt import matrix, solvers
 
 # initialization
-Y = [0.006, 0.004, #b1, c1
-	0.003, 0.009,  #a2, b2
-	0.002, 0.005] #a3, c3
-print('Product Y consumption:')
-print(Y)
+Y = matrix([0, -0.006, -0.004, #b1, c1
+	-0.003, -0.009, 0,  #a2, b2
+	-0.002, 0, -0.005], tc='d') #a3, c3
+# print('c:')
+# print(Y)
 
-T = [10, 8,
-	11, 5,
-	19, 12]
-print('Time parameters:')
-print(T)
+T = matrix([[0, 10, 8, 0, 0, 0, 0, 0, 0],
+	[0, 0, 0, 11, 5, 0, 0, 0, 0], 
+	[0, 0, 0, 0, 0, 0, 19, 0, 12], 
+	[-1, 0, 0, 0, 0, 0, 0, 0, 0],
+	[0, -1, 0, 0, 0, 0, 0, 0, 0],
+	[0, 0, -1, 0, 0, 0, 0, 0, 0], 
+	[0, 0, 0, -1, 0, 0, 0, 0, 0], 
+	[0, 0, 0, 0, -1, 0, 0, 0, 0], 
+	[0, 0, 0, 0, 0, -1, 0, 0, 0],
+	[0, 0, 0, 0, 0, 0, -1, 0, 0], 
+	[0, 0, 0, 0, 0, 0, 0, -1, 0], 
+	[0, 0, 0, 0, 0, 0, 0, 0, -1]], tc='d')
+# print('G:')
+# print(T)
 
-time_funds = [1500, 1100, 1210]
-print('Time funds:')
-print(time_funds)
+time_funds = matrix([1500, 1100, 1210, 
+	0, 0, 0, 0, 0, 0, 0, 0, 0], tc='d')
+# print('h:')
+# print(time_funds)
+# print()
+
+A = matrix([[1, 1, 1, -1, -1, -1, 0, 0, 0], 
+	[0, 0, 0, 1, 1, 1, -1, -1, -1]], tc='d')
+# print('A:')
+# print(A)
+# print()
+
+b = matrix([0, 0], tc='d')
+# print('b:')
+# print(b)
+# print()
+
+#solve
+solution = solvers.lp(Y, T.T, time_funds, A.T, b, solver='glpk')
+print()
+print('Status:', solution['status'])
+print('Objective:', -solution['primal objective'])
+print('x =', solution['x'])
 print()
 
-# variables
-x = variable(6, 'x')
+x = solution['x']
 
-# function
-f = - (Y[0] * x[0] + Y[1] * x[1] + Y[2] * x[2] +
-	Y[3] * x[3] + Y[4] * x[4] + Y[5] * x[5])
+if (10 * x[1] + 8 * x[2] == 1500) or (11 * x[3] + 5 * x[4] == 1100) or (19 * x[6] + 12 * x[8] == 1210):
+	print('В РЕШЕНИИ ПРИСУТСТВУЕТ ПОЛНОСТЬЮ ЗАГРУЖЕННАЯ ГРУППА ОБОРУДОВАНИЯ\n')
 
-o1 = (T[0] * x[0] + T[1] * x[1] <= time_funds[0])
-o2 = (T[3] * x[3] + T[2] * x[2] <= time_funds[1])
-o3 = (T[4] * x[4] + T[5] * x[5] <= time_funds[2])
-o4 = (x[2] + x[4] == x[0] + x[3]) # A = B
-o5 = (x[0] + x[3] == x[1] + x[5]) # B = C
-x_non_negative = (x >= 0)    
-problem = op (f, [o1, o2, o3, o4, o5, x_non_negative])
-problem.solve(solver = 'glpk')  
-problem.status
-print ("Прибыль:")
-print(abs(problem.objective.value()[0]))
-print ("Результат:")
-
-res = x.value
-for i in range(len(res)):
-	print('x[', i, '] = ', res[i])
-
-print(res[2] + res[4])
-print(res[1] + res[5])
-print(res[0] + res[3])
+dh = matrix([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+solution1 = solvers.lp(Y, T.T, time_funds+dh, A.T, b, solver='glpk')
+print()
+print('Status:', solution1['status'])
+print('Objective:', -solution1['primal objective'],
+	'delta:', -solution1['primal objective']-(-solution['primal objective']))
+print('x =', solution1['x'])
+print()
 
 
+print('УВЕЛИЧЕНИЕ ФОНДА РАБОЧЕГО ВРЕМЕНИ')
+prev_z = -solution['primal objective']
+a = 1
+while (True):
+	solution_i = solvers.lp(Y, T.T, time_funds + dh * a, A.T, b, solver='glpk')
+	if solution_i['status'] != 'optimal':
+		print('Couldn''t find a solution!')
+		break
+	new_z = -solution_i['primal objective']
+	delta_z = new_z - prev_z
+	print('Increment %d: objective = %.4f delta = %.4f' % (a, new_z, delta_z))
+	if abs(delta_z - 1500) > 1e-6:
+		print('Basis changed at increment %d' % (a,))
+		break
+	prev_z = new_z
+	a += 1
+
+print('\nУМЕНЬШЕНИЕ ФОНДА РАБОЧЕГО ВРЕМЕНИ')
+prev_z = -solution['primal objective']
+a2 = -1
+while (True):
+	solution_i = solvers.lp(Y, T.T, time_funds + dh * a2, A.T, b, solver='glpk')
+	if solution_i['status'] != 'optimal':
+		print('Couldn''t find a solution!')
+		break
+	new_z = -solution_i['primal objective']
+	delta_z = new_z - prev_z
+	print('Increment %d: objective = %.4f delta = %.4f' % (a2, new_z, delta_z))
+	if abs(delta_z - 1500) > 1e-6:
+		print('Basis changed at increment %d' % (a2,))
+		break
+	prev_z = new_z
+	a2 -= 1
